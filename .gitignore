@@ -1,1 +1,2 @@
-.venv/data_local/
+.venv/
+data_local/
