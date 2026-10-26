@@ -3,47 +3,42 @@
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
-# Предполагаемые модули (реализуются отдельно)
-from preprocessing import PreparedTask, prepare
+from contracts import TaskSpec
 from sandbox import ExecutionResult, run_experiment
 from llm.prompts import build_first_iteration_prompt, extract_python_code
+from llm.qwen_client import call_qwen
+from task_parser import load_task, parse_task
 
 TOTAL_TIMEOUT_SEC = 10790
 
 
-def read_task(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
 
 async def pipeline(task_path: Path) -> AgentResult:
     task_path = task_path.resolve()
-    task_dir = task_path.parent
-
-    #Чтение задачи
-    task_text = await asyncio.to_thread(read_task, task_path)
 
     # Препроцессинг
-    prepared: PreparedTask = await asyncio.to_thread(prepare, task_text, task_dir)
+    description, train, test, sample_submission, data_dictionary, task_dir = load_task(task_path)
+    prepared: TaskSpec = parse_task(description, train, test, sample_submission, data_dictionary)
+
     for warning in prepared.warnings:
         print(f"[preprocessing] {warning}", file=sys.stderr)
 
-    first_prompt_answer = await build_first_iteration_prompt(
-        df_train=prepared.df_train,
+    first_prompt = build_first_iteration_prompt(
+        df_train=train,
         target_col=prepared.target_col,
         task_type=prepared.task_type,
-        target_metric=prepared.target_metric,
-        val_ids=prepared.val_ids,
-        data_dictionary=prepared.data_dictionary,
-    )
-    code = extract_python_code(first_prompt_answer)
-    result: ExecutionResult = await asyncio.to_thread(run_experiment, code, prepared.root, prepared.scratch, prepared.env,
-        prepared.cpu_limit, prepared.memory_limit_mb, prepared.deadline, prepared.max_output_bytes, prepared.outputs)
+        target_metric=prepared.metric,
+        val_ids=prepared.val_ids, #не понял что это, вопрос Владу
+        data_dictionary=data_dictionary,
+    ) #первый запрос к LLM, который возвращает код для эксперимента
+    first_prompt_answer = await asyncio.to_thread(call_qwen, first_prompt) #запрос к LLM
+    code = extract_python_code(first_prompt_answer) #извлечение кода из ответа LLM
+    #Запуск эксперимента в песочнице
+    result: ExecutionResult = await asyncio.to_thread(run_experiment, code, ...) #не доделано
     
-
 async def main(task_path: Path) -> int:
     try:
         result = await asyncio.wait_for(pipeline(task_path), timeout=TOTAL_TIMEOUT_SEC)
