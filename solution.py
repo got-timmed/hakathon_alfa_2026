@@ -9,7 +9,7 @@ from pathlib import Path
 
 # Предполагаемые модули (реализуются отдельно)
 from preprocessing import PreparedTask, prepare
-from agent.sandbox import ExecutionResult, run_experiment
+from sandbox import ExecutionResult, run_experiment
 from llm.prompts import build_first_iteration_prompt, extract_python_code
 
 TOTAL_TIMEOUT_SEC = 10790
@@ -17,16 +17,6 @@ TOTAL_TIMEOUT_SEC = 10790
 
 def read_task(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
-
-def load_config() -> AgentConfig:
-    """Читает переменные окружения, заданные платформой."""
-    return AgentConfig(
-        api_key=os.environ["OPENAI_API_KEY"],
-        model=os.environ["OPENAI_MODEL"],
-        base_url=os.environ.get("OPENAI_BASE_URL"),
-        max_steps=100,
-    )
 
 
 async def pipeline(task_path: Path) -> AgentResult:
@@ -52,6 +42,7 @@ async def pipeline(task_path: Path) -> AgentResult:
     code = extract_python_code(first_prompt_answer)
     result: ExecutionResult = await asyncio.to_thread(run_experiment, code, prepared.root, prepared.scratch, prepared.env,
         prepared.cpu_limit, prepared.memory_limit_mb, prepared.deadline, prepared.max_output_bytes, prepared.outputs)
+    
 
 async def main(task_path: Path) -> int:
     try:
