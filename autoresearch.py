@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from time import monotonic
 from typing import Protocol
 
-from agent.budget import Budget, BudgetExceeded
-from agent.contracts import (
+from budget import Budget, BudgetExceeded
+from contracts import (
     ExperimentResult,
     ExperimentStatus,
     Hypothesis,
@@ -17,7 +17,7 @@ from agent.contracts import (
     is_better,
     metric_for_task,
 )
-from agent.experiment_log import ExperimentLog
+from experiment_log import ExperimentLog
 
 
 class ExperimentEvaluator(Protocol):

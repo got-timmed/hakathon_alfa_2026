@@ -6,7 +6,7 @@ from collections.abc import Sequence
 import numpy as np
 from sklearn.metrics import f1_score, mean_squared_error
 
-from agent.contracts import MetricName, TaskType, metric_for_task
+from contracts import MetricName, TaskType, metric_for_task
 
 
 def score_predictions(

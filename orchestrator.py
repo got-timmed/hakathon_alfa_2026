@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent.autoresearch import (
+from autoresearch import (
     ExperimentEvaluator,
     HypothesisProvider,
     run_autoresearch,
 )
-from agent.budget import Budget
-from agent.contracts import Hypothesis, ResearchOutcome, TaskType
-from agent.experiment_log import ExperimentLog
+from budget import Budget
+from contracts import Hypothesis, ResearchOutcome, TaskType
+from experiment_log import ExperimentLog
 from config import (
     DAILY_API_BUDGET_RUB,
     FINALIZATION_RESERVE_SECONDS,

@@ -4,16 +4,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent.autoresearch import run_autoresearch
-from agent.budget import Budget, BudgetExceeded
-from agent.contracts import (
+from autoresearch import run_autoresearch
+from budget import Budget, BudgetExceeded
+from contracts import (
     ExperimentStatus,
     Hypothesis,
     MetricName,
     TaskType,
 )
-from agent.experiment_log import ExperimentLog
-from pipelines.validation import score_predictions
+from experiment_log import ExperimentLog
+from validation import score_predictions
 
 
 class _Provider:

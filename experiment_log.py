@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agent.contracts import (
+from contracts import (
     ExperimentResult,
     ExperimentStatus,
     Hypothesis,
