@@ -7,11 +7,9 @@ from pathlib import Path
 from autoresearch import run_autoresearch
 from budget import Budget, BudgetExceeded
 from contracts import (
-    EvaluationReport,
     ExperimentStatus,
     Hypothesis,
     MetricName,
-    SandboxOutput,
     TaskType,
 )
 from experiment_log import ExperimentLog
@@ -96,14 +94,7 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
             previous_cycle_outputs = []
 
             async def evaluate(hypothesis, task_type, timeout_seconds):
-                return EvaluationReport(
-                    metric_value=next(values),
-                    sandbox_output=SandboxOutput(
-                        status="success",
-                        stdout=f"stdout from {hypothesis.id}",
-                        output_files=("validation_predictions.csv",),
-                    ),
-                )
+                return next(values)
 
             async def propose(previous_cycle_output, results, timeout_seconds):
                 previous_cycle_outputs.append(previous_cycle_output)
@@ -127,12 +118,6 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(provider.created_agents, 2)
             self.assertEqual(len(previous_cycle_outputs), 2)
             self.assertIn('"metric_value": 0.6', previous_cycle_outputs[0])
-            logged_output = log.read()[0].sandbox_output
-            self.assertEqual(logged_output.stdout, "stdout from seed")
-            self.assertEqual(
-                logged_output.output_files,
-                ("validation_predictions.csv",),
-            )
 
     async def test_regression_selects_lowest_rmse(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

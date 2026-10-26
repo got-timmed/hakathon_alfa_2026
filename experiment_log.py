@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +9,6 @@ from contracts import (
     ExperimentStatus,
     Hypothesis,
     MetricName,
-    SandboxOutput,
     TaskType,
 )
 
@@ -34,11 +32,6 @@ class ExperimentLog:
             "elapsed_seconds": result.elapsed_seconds,
             "started_at": result.started_at,
             "error": result.error,
-            "sandbox_output": (
-                asdict(result.sandbox_output)
-                if result.sandbox_output is not None
-                else None
-            ),
         }
         serialized = json.dumps(record, ensure_ascii=False, allow_nan=False)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -79,19 +72,4 @@ def _result_from_record(record: dict[str, Any]) -> ExperimentResult:
         elapsed_seconds=record["elapsed_seconds"],
         started_at=record["started_at"],
         error=record.get("error"),
-        sandbox_output=_sandbox_output_from_record(record.get("sandbox_output")),
-    )
-
-
-def _sandbox_output_from_record(
-    record: dict[str, Any] | None,
-) -> SandboxOutput | None:
-    if record is None:
-        return None
-    return SandboxOutput(
-        **{
-            **record,
-            "output_files": tuple(record.get("output_files", ())),
-            "missing_outputs": tuple(record.get("missing_outputs", ())),
-        }
     )
