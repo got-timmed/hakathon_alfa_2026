@@ -26,6 +26,38 @@ class ExperimentStatus(str, Enum):
     FAILED = "failed"
 
 
+@dataclass(frozen=True)
+class SandboxOutput:
+    status: str
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int | None = None
+    duration_sec: float = 0.0
+    peak_memory_mb: float | None = None
+    error: str | None = None
+    output_files: tuple[str, ...] = ()
+    missing_outputs: tuple[str, ...] = ()
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.status.strip():
+            raise ValueError("Sandbox status must not be empty")
+        if not math.isfinite(self.duration_sec) or self.duration_sec < 0:
+            raise ValueError("Sandbox duration must be finite and non-negative")
+        if self.peak_memory_mb is not None and (
+            not math.isfinite(self.peak_memory_mb) or self.peak_memory_mb < 0
+        ):
+            raise ValueError("Peak memory must be finite and non-negative")
+
+
+@dataclass(frozen=True)
+class EvaluationReport:
+    metric_value: float | None
+    sandbox_output: SandboxOutput | None = None
+    error: str | None = None
+
+
 def metric_for_task(task_type: TaskType) -> MetricName:
     if task_type is TaskType.REGRESSION:
         return MetricName.RMSE
@@ -47,6 +79,7 @@ class Hypothesis:
     id: str
     description: str
     config: Mapping[str, Any] = field(default_factory=dict)
+    code: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id.strip():
@@ -65,6 +98,7 @@ class ExperimentResult:
     elapsed_seconds: float
     started_at: str
     error: str | None = None
+    sandbox_output: SandboxOutput | None = None
 
     def __post_init__(self) -> None:
         expected_metric = metric_for_task(self.task_type)

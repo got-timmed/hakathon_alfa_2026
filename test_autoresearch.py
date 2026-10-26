@@ -16,16 +16,28 @@ from experiment_log import ExperimentLog
 from validation import score_predictions
 
 
+class _Agent:
+    def __init__(self, provider):
+        self._provider = provider
+
+    async def propose(self, previous_cycle_output, history, timeout_seconds):
+        return await self._provider._propose(
+            previous_cycle_output, history, timeout_seconds
+        )
+
+
 class _Provider:
     def __init__(self, propose, estimated_cost_rub: float = 1.0):
         self._propose = propose
         self._estimated_cost_rub = estimated_cost_rub
+        self.created_agents = 0
 
     def estimate_max_cost_rub(self, results):
         return self._estimated_cost_rub
 
-    async def __call__(self, results, timeout_seconds):
-        return await self._propose(results, timeout_seconds)
+    def create_agent(self):
+        self.created_agents += 1
+        return _Agent(self)
 
 
 class ValidationTests(unittest.TestCase):
@@ -79,18 +91,21 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
                 Hypothesis("candidate-2", "second change"),
             ]
             values = iter([0.6, 0.8, 0.7])
+            previous_cycle_outputs = []
 
             async def evaluate(hypothesis, task_type, timeout_seconds):
                 return next(values)
 
-            async def propose(results, timeout_seconds):
+            async def propose(previous_cycle_output, results, timeout_seconds):
+                previous_cycle_outputs.append(previous_cycle_output)
                 return hypotheses[len(results)] if len(results) < len(hypotheses) else None
 
+            provider = _Provider(propose)
             outcome = await run_autoresearch(
                 task_type=TaskType.MULTICLASS_CLASSIFICATION,
                 initial_hypothesis=hypotheses[0],
                 evaluator=evaluate,
-                hypothesis_provider=_Provider(propose),
+                hypothesis_agent_factory=provider,
                 budget=Budget(time_limit_seconds=100, finalization_reserve_seconds=5),
                 experiment_log=log,
                 max_experiments=3,
@@ -100,6 +115,9 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(outcome.best.hypothesis.id, "candidate-1")
             self.assertEqual(outcome.best.metric, MetricName.MACRO_F1)
             self.assertEqual(len(log.read()), 3)
+            self.assertEqual(provider.created_agents, 2)
+            self.assertEqual(len(previous_cycle_outputs), 2)
+            self.assertIn('"metric_value": 0.6', previous_cycle_outputs[0])
 
     async def test_regression_selects_lowest_rmse(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -112,14 +130,15 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
             async def evaluate(hypothesis, task_type, timeout_seconds):
                 return next(values)
 
-            async def propose(results, timeout_seconds):
+            async def propose(previous_cycle_output, results, timeout_seconds):
                 return hypotheses[1] if len(results) == 1 else None
 
+            provider = _Provider(propose)
             outcome = await run_autoresearch(
                 task_type=TaskType.REGRESSION,
                 initial_hypothesis=hypotheses[0],
                 evaluator=evaluate,
-                hypothesis_provider=_Provider(propose),
+                hypothesis_agent_factory=provider,
                 budget=Budget(time_limit_seconds=100, finalization_reserve_seconds=5),
                 experiment_log=ExperimentLog(Path(temp_dir) / "experiments.jsonl"),
                 max_experiments=2,
@@ -162,14 +181,14 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
                 now[0] = 95.0
                 return 0.5
 
-            async def propose(results, timeout_seconds):
+            async def propose(previous_cycle_output, results, timeout_seconds):
                 self.fail("must preserve time for finalization")
 
             outcome = await run_autoresearch(
                 task_type=TaskType.REGRESSION,
                 initial_hypothesis=Hypothesis("seed", "baseline"),
                 evaluator=evaluate,
-                hypothesis_provider=_Provider(propose),
+                hypothesis_agent_factory=_Provider(propose),
                 budget=budget,
                 experiment_log=ExperimentLog(Path(temp_dir) / "experiments.jsonl"),
             )
@@ -188,14 +207,14 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
             async def evaluate(hypothesis, task_type, timeout_seconds):
                 return 1.0
 
-            async def propose(results, timeout_seconds):
+            async def propose(previous_cycle_output, results, timeout_seconds):
                 self.fail("must not make an over-budget model request")
 
             outcome = await run_autoresearch(
                 task_type=TaskType.REGRESSION,
                 initial_hypothesis=Hypothesis("seed", "baseline"),
                 evaluator=evaluate,
-                hypothesis_provider=_Provider(propose, estimated_cost_rub=10.01),
+                hypothesis_agent_factory=_Provider(propose, estimated_cost_rub=10.01),
                 budget=budget,
                 experiment_log=ExperimentLog(Path(temp_dir) / "experiments.jsonl"),
             )
@@ -214,14 +233,14 @@ class AutoResearchTests(unittest.IsolatedAsyncioTestCase):
             async def evaluate(hypothesis, task_type, timeout_seconds):
                 return 0.75
 
-            async def propose(results, timeout_seconds):
+            async def propose(previous_cycle_output, results, timeout_seconds):
                 raise RuntimeError("provider unavailable")
 
             outcome = await run_autoresearch(
                 task_type=TaskType.MULTICLASS_CLASSIFICATION,
                 initial_hypothesis=Hypothesis("seed", "baseline"),
                 evaluator=evaluate,
-                hypothesis_provider=_Provider(propose, estimated_cost_rub=2),
+                hypothesis_agent_factory=_Provider(propose, estimated_cost_rub=2),
                 budget=budget,
                 experiment_log=ExperimentLog(Path(temp_dir) / "experiments.jsonl"),
             )
