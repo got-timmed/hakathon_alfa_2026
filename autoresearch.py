@@ -20,6 +20,7 @@ from contracts import (
     TaskType,
     is_better,
     metric_for_task,
+    MetricName,
 )
 from experiment_log import ExperimentLog
 
@@ -84,6 +85,7 @@ async def run_autoresearch(
     experiment_log: ExperimentLog,
     hypothesis_agent_factory: HypothesisAgentFactory | None = None,
     max_experiments: int = 20,
+    metric: MetricName | None = None,
 ) -> ResearchOutcome:
     """Evaluate a seed solution and refine it through an optional provider.
 
@@ -94,7 +96,7 @@ async def run_autoresearch(
     if max_experiments <= 0:
         raise ValueError("max_experiments must be positive")
 
-    metric = metric_for_task(task_type)
+    metric = metric or metric_for_task(task_type)
     results: list[ExperimentResult] = []
     seen_ids: set[str] = set()
     hypothesis: Hypothesis | None = initial_hypothesis

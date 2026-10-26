@@ -68,7 +68,8 @@ def _kill_group(group_id: int) -> None:
 def run_experiment(code: str, work_dir: str | Path, timeout_sec: float,
                    memory_limit_mb: int = 4096, cpu_limit: int = 1, *,
                    expected_outputs: tuple[str, ...] = (),
-                   max_output_bytes: int = 65536) -> ExecutionResult:
+                   max_output_bytes: int = 65536,
+                   cancel_event=None) -> ExecutionResult:
     """Запустить код текущим Python и вернуть диагностику и пути к результатам.
 
     Для каждого эксперимента нужна отдельная папка. Входные данные готовит
@@ -140,7 +141,10 @@ def run_experiment(code: str, work_dir: str | Path, timeout_sec: float,
                         if not stopped:
                             rss = _group_rss(process.pid)
                             peak = max(peak, rss)
-                            if rss > memory_limit_mb * 1024 * 1024:
+                            if cancel_event is not None and cancel_event.is_set():
+                                status, error = 'error', 'Experiment cancelled'
+                                stopped = True
+                            elif rss > memory_limit_mb * 1024 * 1024:
                                 status, error = 'memory_limit', 'Process group exceeded sampled RSS limit'
                                 stopped = True
                             elif process.poll() is not None:

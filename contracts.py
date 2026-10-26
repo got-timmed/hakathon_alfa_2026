@@ -9,11 +9,20 @@ from typing import Any, Mapping, Optional
 class TaskType(str, Enum):
     REGRESSION = "regression"
     MULTICLASS_CLASSIFICATION = "multiclass_classification"
+    BINARY_CLASSIFICATION = "binary"
 
 
 class MetricName(str, Enum):
     RMSE = "rmse"
     MACRO_F1 = "macro_f1"
+    MAE = "mae"
+    MSE = "mse"
+    R2 = "r2"
+    ACCURACY = "accuracy"
+    F1 = "f1"
+    WEIGHTED_F1 = "weighted_f1"
+    ROC_AUC = "roc_auc"
+    LOGLOSS = "logloss"
 
 
 class MetricDirection(str, Enum):
@@ -61,17 +70,18 @@ class EvaluationReport:
 def metric_for_task(task_type: TaskType) -> MetricName:
     if task_type is TaskType.REGRESSION:
         return MetricName.RMSE
+    if task_type is TaskType.BINARY_CLASSIFICATION:
+        return MetricName.ROC_AUC
     if task_type is TaskType.MULTICLASS_CLASSIFICATION:
         return MetricName.MACRO_F1
     raise ValueError(f"Unsupported task type: {task_type}")
 
 
 def direction_for_metric(metric: MetricName) -> MetricDirection:
-    if metric is MetricName.RMSE:
+    if metric in (MetricName.RMSE, MetricName.MAE, MetricName.MSE, MetricName.LOGLOSS):
         return MetricDirection.MINIMIZE
-    if metric is MetricName.MACRO_F1:
-        return MetricDirection.MAXIMIZE
-    raise ValueError(f"Unsupported metric: {metric}")
+    return MetricDirection.MAXIMIZE
+
 
 
 @dataclass(frozen=True)
@@ -101,12 +111,9 @@ class ExperimentResult:
     sandbox_output: SandboxOutput | None = None
 
     def __post_init__(self) -> None:
-        expected_metric = metric_for_task(self.task_type)
-        if self.metric is not expected_metric:
-            raise ValueError(
-                f"{self.task_type.value} requires {expected_metric.value}, "
-                f"not {self.metric.value}"
-            )
+        regression_metrics = {MetricName.RMSE, MetricName.MAE, MetricName.MSE, MetricName.R2}
+        if (self.task_type is TaskType.REGRESSION) != (self.metric in regression_metrics):
+            raise ValueError('Metric does not match task type')
         if not math.isfinite(self.elapsed_seconds) or self.elapsed_seconds < 0:
             raise ValueError("elapsed_seconds must be finite and non-negative")
         if self.status is ExperimentStatus.SUCCEEDED:

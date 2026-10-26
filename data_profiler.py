@@ -2,7 +2,7 @@ from __future__ import annotations
 import warnings
 import numpy as np
 import pandas as pd
-from .contracts import DataProfile, TaskSpec
+from contracts import DataProfile, TaskSpec
 
 
 class C:

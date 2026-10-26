@@ -8,7 +8,7 @@ from autoresearch import (
     run_autoresearch,
 )
 from budget import Budget
-from contracts import Hypothesis, ResearchOutcome, TaskType
+from contracts import Hypothesis, ResearchOutcome, TaskType, MetricName
 from experiment_log import ExperimentLog
 from llm_client import QwenHypothesisAgentFactory
 from config import (
@@ -28,9 +28,11 @@ async def run_research(
     hypothesis_agent_factory: HypothesisAgentFactory | None = None,
     budget: Budget | None = None,
     max_experiments: int = MAX_EXPERIMENTS,
+    metric: MetricName | None = None,
+    use_llm: bool = True,
 ) -> ResearchOutcome:
     active_hypothesis_factory = hypothesis_agent_factory
-    if active_hypothesis_factory is None:
+    if active_hypothesis_factory is None and use_llm:
         active_hypothesis_factory = QwenHypothesisAgentFactory.from_env()
     active_budget = budget or Budget(
         time_limit_seconds=TOTAL_TIME_LIMIT_SECONDS,
@@ -39,6 +41,7 @@ async def run_research(
     )
     return await run_autoresearch(
         task_type=task_type,
+        metric=metric,
         initial_hypothesis=initial_hypothesis,
         evaluator=evaluator,
         budget=active_budget,
