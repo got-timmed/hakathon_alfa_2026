@@ -17,9 +17,10 @@ from contracts import ExperimentResult, Hypothesis, direction_for_metric
 @dataclass(frozen=True)
 class QwenSettings:
     model: str
-    request_reserve_rub: float = 30.0
-    max_input_tokens: int = 24_000
-    max_output_tokens: int = 1_500
+    request_reserve_rub: float = 0.0
+    max_prompt_bytes: int = 96_000
+    max_output_tokens: int = 8_192
+    request_timeout_seconds: float = 120.0
     temperature: float = 0.2
 
     def __post_init__(self) -> None:
@@ -30,8 +31,13 @@ class QwenSettings:
             or self.request_reserve_rub < 0
         ):
             raise ValueError("Qwen request reserve must be finite and non-negative")
-        if self.max_input_tokens <= 0 or self.max_output_tokens <= 0:
-            raise ValueError("Qwen token limits must be positive")
+        if self.max_prompt_bytes <= 0 or self.max_output_tokens <= 0:
+            raise ValueError("Qwen prompt and output limits must be positive")
+        if (
+            not math.isfinite(self.request_timeout_seconds)
+            or self.request_timeout_seconds <= 0
+        ):
+            raise ValueError("Qwen request timeout must be finite and positive")
         if not math.isfinite(self.temperature) or not 0 <= self.temperature <= 2:
             raise ValueError("Qwen temperature must be between 0 and 2")
 
@@ -50,10 +56,13 @@ class QwenSettings:
         return cls(
             model=os.getenv("OPENAI_MODEL") or "qwen/qwen3.8-27b",
             request_reserve_rub=float(
-                os.getenv("QWEN_REQUEST_RESERVE_RUB", "30")
+                os.getenv("QWEN_REQUEST_RESERVE_RUB", "0")
             ),
-            max_input_tokens=int(os.getenv("QWEN_MAX_INPUT_TOKENS", "24000")),
-            max_output_tokens=int(os.getenv("QWEN_MAX_OUTPUT_TOKENS", "1500")),
+            max_prompt_bytes=int(os.getenv("QWEN_MAX_PROMPT_BYTES", "96000")),
+            max_output_tokens=int(os.getenv("QWEN_MAX_OUTPUT_TOKENS", "8192")),
+            request_timeout_seconds=float(
+                os.getenv("QWEN_REQUEST_TIMEOUT_SECONDS", "120")
+            ),
             temperature=float(os.getenv("QWEN_TEMPERATURE", "0.2")),
         )
 
@@ -121,25 +130,51 @@ class QwenHypothesisAgent:
             },
             {"role": "user", "content": user_prompt},
         ]
-        prompt_bytes = sum(len(str(message["content"]).encode("utf-8")) for message in messages)
-        if prompt_bytes > self._settings.max_input_tokens:
+        prompt_bytes = sum(
+            len(str(message["content"]).encode("utf-8")) for message in messages
+        )
+        if prompt_bytes > self._settings.max_prompt_bytes:
             raise ValueError(
-                "Qwen prompt exceeds configured maximum input budget: "
-                f"{prompt_bytes} UTF-8 bytes > {self._settings.max_input_tokens}"
+                "Qwen prompt exceeds configured maximum size: "
+                f"{prompt_bytes} UTF-8 bytes > {self._settings.max_prompt_bytes}"
             )
 
-        client = self._client_factory()
+        request_timeout = min(
+            timeout_seconds,
+            self._settings.request_timeout_seconds,
+        )
+        client = self._client_factory(max_retries=0)
         try:
             response = await client.chat.completions.create(
                 model=self._settings.model,
                 messages=messages,
                 temperature=self._settings.temperature,
                 max_tokens=self._settings.max_output_tokens,
-                timeout=timeout_seconds,
+                timeout=request_timeout,
+                extra_body={"enable_thinking": False},
             )
         finally:
             await client.close()
-        content = response.choices[0].message.content
+        if not response.choices:
+            raise ValueError("Qwen returned no completion choices")
+        choice = response.choices[0]
+        finish_reason = choice.finish_reason
+        if finish_reason == "length":
+            usage = getattr(response, "usage", None)
+            completion_tokens = getattr(usage, "completion_tokens", None)
+            token_note = (
+                f"; completion_tokens={completion_tokens}"
+                if completion_tokens is not None
+                else ""
+            )
+            raise ValueError(
+                "Qwen response was truncated because it reached max_output_tokens="
+                f"{self._settings.max_output_tokens}{token_note}. "
+                "Reduce generated code/prompt size or check the proxy output cap."
+            )
+        if finish_reason == "content_filter":
+            raise ValueError("Qwen stopped the response because of a content filter")
+        content = choice.message.content
         if not content or not content.strip():
             raise ValueError("Qwen returned an empty hypothesis")
         return _parse_hypothesis(content)
